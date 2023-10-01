@@ -1,0 +1,28 @@
+- sections: 
+  - local: index
+    title: 🤗 AutoTrain
+  - local: getting_started
+    title: Installation
+  - local: cost
+    title: How much does it cost?
+  - local: support
+    title: Get help and support
+  title: Get started
+- sections:
+  - local: model_choice
+    title: Model Selection
+  - local: param_choice
+    title: Parameter Selection
+  title: Selecting Models and Parameters
+- sections: 
+  - local: text_classification
+    title: Text Classification
+  - local: llm_finetuning
+    title: LLM Finetuning
+  title: Text Tasks
+- sections:
+  - local: image_classification
+    title: Image Classification
+  - local: dreambooth
+    title: DreamBooth
+  title: Image Tasks
