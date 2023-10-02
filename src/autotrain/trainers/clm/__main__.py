@@ -38,6 +38,7 @@ def parse_args():
 
 @monitor
 def train(config):
+    print("from trainer clm")
     if isinstance(config, dict):
         config = LLMTrainingParams(**config)
 

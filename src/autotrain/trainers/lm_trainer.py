@@ -199,7 +199,7 @@ def group_texts(examples, block_size):
 @utils.job_watcher
 def train(co2_tracker, payload, huggingface_token, model_path):
     # create model repo
-    print("from lm_trainer.py")
+    # print("from lm_trainer.py")
     model_repo = utils.create_repo(
         project_name=payload["proj_name"],
         autotrain_user=payload["username"],
