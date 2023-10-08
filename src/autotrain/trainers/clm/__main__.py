@@ -223,9 +223,9 @@ def train(config):
     num_bit_mantissa  = 3
     offset = torch.tensor(2**(num_bit_exponent-1))
     scale = torch.tensor(2 ** num_bit_mantissa)
-    threshold_mantissa = 2**num_bit_mantissa
-    threshold_up = float(2**threshold_mantissa)
-    threshold_down = float(2**-(threshold_mantissa))
+    threshold_clamp = 2**num_bit_exponent
+    threshold_up = float(2**threshold_clamp)
+    threshold_down = float(2**-(threshold_clamp))
 
     # float32_tensor = torch.tensor(3.14159, dtype=torch.float32)
 
