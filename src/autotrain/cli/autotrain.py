@@ -13,7 +13,7 @@ from .run_text_classification import RunAutoTrainTextClassificationCommand
 
 
 def main():
-    print("from autotrain.py")
+    # print("from autotrain.py")
     parser = argparse.ArgumentParser(
         "AutoTrain advanced CLI",
         usage="autotrain <command> [<args>]",

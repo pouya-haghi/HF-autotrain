@@ -6,6 +6,7 @@ from functools import partial
 
 import pandas as pd
 import torch
+import torch.nn as nn
 from accelerate import Accelerator
 from accelerate.state import PartialState
 from datasets import Dataset, load_dataset
@@ -38,7 +39,7 @@ def parse_args():
 
 @monitor
 def train(config):
-    print("from trainer clm")
+    # print("from trainer clm")
     if isinstance(config, dict):
         config = LLMTrainingParams(**config)
 
@@ -212,6 +213,87 @@ def train(config):
                 desc=f"Grouping texts in chunks of {block_size}",
             )
 
+    # PH: start
+    # convert to float8 (and any custom float)
+    # DONT FORGET TO FIRST QUANTIZE WEIGHTS TO LNS16
+    # IN YOUR HOOK, YOU HAVE TO USE .CLONE OF THE ARGUMNETS AND THEN MODIFY IT AND FINALLY RETURN IT. IT DOESNT WORK WITHOUT CLONE (IT HAS TO BE OUT OF PLACE COMPUTATION, NOT IN-PLACE)
+
+    # Create a 32-bit float tensor 3 bit mantissa, 4 bit exponent
+    num_bit_exponent = 4
+    num_bit_mantissa  = 3
+    offset = torch.tensor(2**(num_bit_exponent-1))
+    scale = torch.tensor(2 ** num_bit_mantissa)
+    threshold_mantissa = 2**num_bit_mantissa
+    threshold_up = float(2**threshold_mantissa)
+    threshold_down = float(2**-(threshold_mantissa))
+
+    # float32_tensor = torch.tensor(3.14159, dtype=torch.float32)
+
+    # # Extract sign, exponent, and mantissa bits from the 32-bit float
+    # # sign_bit = float32_tensor.sign()
+    # exponent_bits = torch.floor(torch.log2(torch.abs(float32_tensor))) + offset
+    # exponent = torch.pow(2, (exponent_bits - offset))
+    # mantissa_bits = torch.round(((float32_tensor / exponent) - 1) * scale)
+    # apx_float = ((mantissa_bits/scale) + 1) * exponent
+
+    # For keeping track of activations:
+    # class ReferenceCounter:
+    #     def __init__(self):
+    #         self.count = 0
+    #     def increase(self):
+    #         self.count += 1
+    #     def get_count(self):
+    #         return self.count
+
+    # counter = ReferenceCounter()
+    # list_output_activation = {}
+
+    class STEFunction_structured(torch.autograd.Function):
+        """ define straight through estimator with overrided gradient (gate) """
+        @staticmethod
+        def forward(ctx, input):
+            # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
+            output = input.clone()
+            # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+            clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
+            output = torch.where(output<0, -clamped_output, clamped_output)
+
+            exponent_bits = torch.floor(torch.log2(torch.abs(output))) + offset
+            exponent = torch.pow(2, (exponent_bits - offset))
+            mantissa_bits = torch.round(((output / exponent) - 1) * scale)
+            output = ((mantissa_bits/scale) + 1) * exponent
+            return output
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+            grad_input = grad_output.clone()
+            return grad_input
+            # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+            # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+            # grad_input = grad_output.clone()
+            # clamped_output = torch.clamp(torch.abs(grad_input), min=threshold_down, max=threshold_up)
+            # grad_input = torch.where(grad_input<0, -clamped_output, clamped_output)
+
+            # exponent_bits = torch.floor(torch.log2(torch.abs(grad_input))) + offset
+            # exponent = torch.pow(2, (exponent_bits - offset))
+            # mantissa_bits = torch.round(((grad_input / exponent) - 1) * scale)
+            # grad_input = ((mantissa_bits/scale) + 1) * exponent
+            # return grad_input
+
+    def activation_hook(module, input, output):
+        output = STEFunction_structured.apply(output)
+        # for keeping track of activations
+        # list_output_activation[str(module.__class__.__name__)+str("_")+str(counter.get_count())] = output #$$$
+        # counter.increase() #$$$
+        return output
+
+    EXCLUDED_ACTIVATIONS = (nn.ReLU, nn.Tanh, nn.GELU, nn.Sigmoid, nn.Softmax, nn.LeakyReLU, nn.PReLU)
+
+    for name, module in model.named_modules():
+        if not isinstance(module, nn.ModuleList) and not list(module.children()) and "intermediate_act_fn" not in name and not isinstance(module, nn.LayerNorm) and not isinstance(module, nn.Dropout) and not any(isinstance(module, activation) for activation in EXCLUDED_ACTIVATIONS):
+            module.register_forward_hook(activation_hook)
+    # PH: end
     logger.info("creating trainer")
     # trainer specific
     if config.logging_steps == -1:
