@@ -258,7 +258,7 @@ def train(config):
                 # Clone each tensor in the tuple
                 output = tuple(t.clone() for t in input)
                 output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
-                output = tuple(((torch.round(((t / torch.pow(2, (torch.floor(torch.log2(torch.abs(t)))))) - 1) * scale)/scale) + 1) * exponent for t in output)
+                output = tuple(((torch.round(((t / torch.pow(2, (torch.floor(torch.log2(torch.abs(t)))))) - 1) * scale)/scale) + 1) * torch.pow(2, (torch.floor(torch.log2(torch.abs(t))))) for t in output)
                 return output                
             else:
                 # If input is not a tuple, clone it
