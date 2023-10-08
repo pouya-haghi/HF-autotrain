@@ -253,7 +253,13 @@ def train(config):
         @staticmethod
         def forward(ctx, input):
             # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
-            output = input.clone()
+            # output = input.clone()
+            if isinstance(input, tuple):
+                # Clone each tensor in the tuple
+                output = tuple(t.clone() for t in input)
+            else:
+                # If input is not a tuple, clone it
+                output = input.clone()
             # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
             clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
             output = torch.where(output<0, -clamped_output, clamped_output)
