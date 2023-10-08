@@ -248,9 +248,15 @@ def train(config):
     # counter = ReferenceCounter()
     # list_output_activation = {}
 
-    class STEFunction_structured(torch.autograd.Function):
-        """ define straight through estimator with overrided gradient (gate) """
-        @staticmethod
+        output = tuple(
+                (
+                    torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)),
+                    torch.pow(2, (torch.floor(torch.log2(torch.abs(t))) + offset)),
+                    ((torch.round(((t / exponent) - 1) * scale) / scale) + 1) * exponent
+                )
+                for t in input
+            )
+
         def forward(ctx, input):
             # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
             # output = input.clone()
@@ -264,11 +270,32 @@ def train(config):
             clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
             output = torch.where(output<0, -clamped_output, clamped_output)
 
-            exponent_bits = torch.floor(torch.log2(torch.abs(output))) + offset
-            exponent = torch.pow(2, (exponent_bits - offset))
-            mantissa_bits = torch.round(((output / exponent) - 1) * scale)
-            output = ((mantissa_bits/scale) + 1) * exponent
-            return output
+            output = 
+
+    class STEFunction_structured(torch.autograd.Function):
+        """ define straight through estimator with overrided gradient (gate) """
+        @staticmethod
+        def forward(ctx, input):
+            # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
+            # output = input.clone()
+            if isinstance(input, tuple):
+                # Clone each tensor in the tuple
+                output = tuple(t.clone() for t in input)
+                output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
+                output = tuple(((torch.round(((t / torch.pow(2, (torch.floor(torch.log2(torch.abs(t)))))) - 1) * scale)/scale) + 1) * exponent for t in output)
+                return output                
+            else:
+                # If input is not a tuple, clone it
+                output = input.clone()
+                # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+                clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
+                output = torch.where(output<0, -clamped_output, clamped_output)
+
+                exponent_bits = torch.floor(torch.log2(torch.abs(output))) + offset
+                exponent = torch.pow(2, (exponent_bits - offset))
+                mantissa_bits = torch.round(((output / exponent) - 1) * scale)
+                output = ((mantissa_bits/scale) + 1) * exponent
+                return output
 
         @staticmethod
         def backward(ctx, grad_output):
