@@ -250,45 +250,45 @@ def train(config):
 
     # class STEFunction_structured(torch.autograd.Function):
     #     """ define straight through estimator with overrided gradient (gate) """
-    #     @staticmethod
-    #     def forward(ctx, input):
-    #         # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
-    #         # output = input.clone()
-    #         if isinstance(input, tuple):
-    #             # Clone each tensor in the tuple
-    #             output = tuple(t.clone() for t in input)
-    #             output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
-    #             output = tuple(((torch.round(((t / torch.pow(2, (torch.floor(torch.log2(torch.abs(t)))))) - 1) * scale)/scale) + 1) * torch.pow(2, (torch.floor(torch.log2(torch.abs(t))))) for t in output)
-    #             return output                
-    #         else:
-    #             # If input is not a tuple, clone it
-    #             output = input.clone()
-    #             # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
-    #             clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
-    #             output = torch.where(output<0, -clamped_output, clamped_output)
+        # @staticmethod
+        # def forward(ctx, input):
+        #     # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
+        #     # output = input.clone()
+        #     if isinstance(input, tuple):
+        #         # Clone each tensor in the tuple
+        #         output = tuple(t.clone() for t in input)
+        #         output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
+        #         output = tuple(((torch.round(((t / torch.pow(2, (torch.floor(torch.log2(torch.abs(t)))))) - 1) * scale)/scale) + 1) * torch.pow(2, (torch.floor(torch.log2(torch.abs(t))))) for t in output)
+        #         return output                
+        #     else:
+        #         # If input is not a tuple, clone it
+        #         output = input.clone()
+        #         # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+        #         clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
+        #         output = torch.where(output<0, -clamped_output, clamped_output)
 
-    #             exponent_bits = torch.floor(torch.log2(torch.abs(output))) + offset
-    #             exponent = torch.pow(2, (exponent_bits - offset))
-    #             mantissa_bits = torch.round(((output / exponent) - 1) * scale)
-    #             output = ((mantissa_bits/scale) + 1) * exponent
+        #         exponent_bits = torch.floor(torch.log2(torch.abs(output))) + offset
+        #         exponent = torch.pow(2, (exponent_bits - offset))
+        #         mantissa_bits = torch.round(((output / exponent) - 1) * scale)
+        #         output = ((mantissa_bits/scale) + 1) * exponent
     #             return output
 
-    #     @staticmethod
-    #     def backward(ctx, grad_output):
-    #         # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
-    #         grad_input = grad_output.clone()
-    #         return grad_input
-    #         # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
-    #         # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
-    #         # grad_input = grad_output.clone()
-    #         # clamped_output = torch.clamp(torch.abs(grad_input), min=threshold_down, max=threshold_up)
-    #         # grad_input = torch.where(grad_input<0, -clamped_output, clamped_output)
+        # @staticmethod
+        # def backward(ctx, grad_output):
+        #     # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+        #     grad_input = grad_output.clone()
+        #     return grad_input
+        #     # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+        #     # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+        #     # grad_input = grad_output.clone()
+        #     # clamped_output = torch.clamp(torch.abs(grad_input), min=threshold_down, max=threshold_up)
+        #     # grad_input = torch.where(grad_input<0, -clamped_output, clamped_output)
 
-    #         # exponent_bits = torch.floor(torch.log2(torch.abs(grad_input))) + offset
-    #         # exponent = torch.pow(2, (exponent_bits - offset))
-    #         # mantissa_bits = torch.round(((grad_input / exponent) - 1) * scale)
-    #         # grad_input = ((mantissa_bits/scale) + 1) * exponent
-    #         # return grad_input
+        #     # exponent_bits = torch.floor(torch.log2(torch.abs(grad_input))) + offset
+        #     # exponent = torch.pow(2, (exponent_bits - offset))
+        #     # mantissa_bits = torch.round(((grad_input / exponent) - 1) * scale)
+        #     # grad_input = ((mantissa_bits/scale) + 1) * exponent
+        #     # return grad_input
 
     # def activation_hook(module, input, output):
     #     output = STEFunction_structured.apply(output)
@@ -342,48 +342,20 @@ def train(config):
         @staticmethod
         def forward(ctx, input):
             # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
-            output = input.clone()
-            # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
-            clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
-            output = torch.where(output<0, -clamped_output, clamped_output)
-            # my_max = torch.max(copy_output).item()
-            # my_min = torch.min(copy_output).item()
-            # my_absmin = torch.min(torch.abs(copy_output)).item()
-            # if my_max > threshold_up or abs(my_min) > threshold_up:
-            #   print("Error: out of range for 16 bit quant BIG NUMBER")
-            # if my_absmin < threshold_down:
-            #   # print("Error: out of range for 16 bit quant SMALL NUMBER")
-            #   copy_output = torch.where(torch.abs(copy_output) < threshold_down, torch.tensor(0.0), copy_output)
-
-            # v1: concise
-            output = torch.where(output > 0, torch.pow(2,(torch.round(torch.log2(output)*scale))/scale), torch.where(output < 0, -torch.pow(2,(torch.round(torch.log2(-output)*scale)/scale)), output))
-            return output
-
-            # v2:
-            # if len(output.shape) == 3: # 3D
-            #   non_zero_indices = output.nonzero()
-            #   non_zero_values = output[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2]] # 0 because the first dimension is batch, 1 b/c next one is first dimension of feature, 2 b/c it is second dimension of features
-            #   # if 1D: non_zero_indices
-            #   if len(non_zero_values) > 0: # any nonzero avail
-            #     log_x = torch.where(non_zero_values > 0, torch.log2(non_zero_values), -torch.log2(-non_zero_values))
-            #     integer_part = torch.round(log_x * scale).to(torch.float32) # 2**3 - round(+ 0.5)
-            #     quant_exponent = integer_part / scale
-            #     # quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, quant_exponent)))
-            #     quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, -quant_exponent)))
-            #     output[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2]] = quantized_values
-            # elif len(output.shape) == 2: # 2D
-            #   non_zero_indices = output.nonzero()
-            #   non_zero_values = output[non_zero_indices[:, 0], non_zero_indices[:, 1]] # 0 because the first dimension is batch, 1 b/c next one is first dimension of feature, 2 b/c it is second dimension of features
-            #   if len(non_zero_values) > 0:
-            #     log_x = torch.where(non_zero_values > 0, torch.log2(non_zero_values), -torch.log2(-non_zero_values))
-            #     integer_part = torch.round(log_x * scale).to(torch.float32) # 2**3 - round(+ 0.5)
-            #     quant_exponent = integer_part / scale
-            #     # quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, quant_exponent)))
-            #     quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, -quant_exponent)))
-            #     output[non_zero_indices[:, 0], non_zero_indices[:, 1]] = quantized_values
-            # else:
-            #   print("Out of shape")
-            # return output
+            if isinstance(input, tuple):
+                # Clone each tensor in the tuple
+                output = tuple(t.clone() for t in input)
+                output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
+                output = tuple(torch.where(t > 0, torch.pow(2,(torch.round(torch.log2(t)*scale))/scale), torch.where(t < 0, -torch.pow(2,(torch.round(torch.log2(-t)*scale)/scale)), t)) for t in output)
+                return output                
+            else:
+                output = input.clone()
+                # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+                clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
+                output = torch.where(output<0, -clamped_output, clamped_output)
+                # v1: concise
+                output = torch.where(output > 0, torch.pow(2,(torch.round(torch.log2(output)*scale))/scale), torch.where(output < 0, -torch.pow(2,(torch.round(torch.log2(-output)*scale)/scale)), output))
+                return output
 
         @staticmethod
         def backward(ctx, grad_output):
