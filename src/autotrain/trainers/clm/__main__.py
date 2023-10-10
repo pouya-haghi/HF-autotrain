@@ -213,28 +213,117 @@ def train(config):
                 desc=f"Grouping texts in chunks of {block_size}",
             )
 
-    # PH: start
-    # convert to float8 (and any custom float)
+    # PH: start (float8)
+    # # convert to float8 (and any custom float)
+    # # DONT FORGET TO FIRST QUANTIZE WEIGHTS TO LNS16
+    # # IN YOUR HOOK, YOU HAVE TO USE .CLONE OF THE ARGUMNETS AND THEN MODIFY IT AND FINALLY RETURN IT. IT DOESNT WORK WITHOUT CLONE (IT HAS TO BE OUT OF PLACE COMPUTATION, NOT IN-PLACE)
+
+    # # Create a 32-bit float tensor 3 bit mantissa, 4 bit exponent
+    # num_bit_exponent = 4
+    # num_bit_mantissa  = 3
+    # offset = torch.tensor(2**(num_bit_exponent-1))
+    # scale = torch.tensor(2 ** num_bit_mantissa)
+    # threshold_clamp = 2**num_bit_exponent
+    # threshold_up = float(2**threshold_clamp)
+    # threshold_down = float(2**-(threshold_clamp))
+
+    # # float32_tensor = torch.tensor(3.14159, dtype=torch.float32)
+
+    # # # Extract sign, exponent, and mantissa bits from the 32-bit float
+    # # # sign_bit = float32_tensor.sign()
+    # # exponent_bits = torch.floor(torch.log2(torch.abs(float32_tensor))) + offset
+    # # exponent = torch.pow(2, (exponent_bits - offset))
+    # # mantissa_bits = torch.round(((float32_tensor / exponent) - 1) * scale)
+    # # apx_float = ((mantissa_bits/scale) + 1) * exponent
+
+    # # For keeping track of activations:
+    # # class ReferenceCounter:
+    # #     def __init__(self):
+    # #         self.count = 0
+    # #     def increase(self):
+    # #         self.count += 1
+    # #     def get_count(self):
+    # #         return self.count
+
+    # # counter = ReferenceCounter()
+    # # list_output_activation = {}
+
+    # class STEFunction_structured(torch.autograd.Function):
+    #     """ define straight through estimator with overrided gradient (gate) """
+    #     @staticmethod
+    #     def forward(ctx, input):
+    #         # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
+    #         # output = input.clone()
+    #         if isinstance(input, tuple):
+    #             # Clone each tensor in the tuple
+    #             output = tuple(t.clone() for t in input)
+    #             output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
+    #             output = tuple(((torch.round(((t / torch.pow(2, (torch.floor(torch.log2(torch.abs(t)))))) - 1) * scale)/scale) + 1) * torch.pow(2, (torch.floor(torch.log2(torch.abs(t))))) for t in output)
+    #             return output                
+    #         else:
+    #             # If input is not a tuple, clone it
+    #             output = input.clone()
+    #             # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+    #             clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
+    #             output = torch.where(output<0, -clamped_output, clamped_output)
+
+    #             exponent_bits = torch.floor(torch.log2(torch.abs(output))) + offset
+    #             exponent = torch.pow(2, (exponent_bits - offset))
+    #             mantissa_bits = torch.round(((output / exponent) - 1) * scale)
+    #             output = ((mantissa_bits/scale) + 1) * exponent
+    #             return output
+
+    #     @staticmethod
+    #     def backward(ctx, grad_output):
+    #         # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+    #         grad_input = grad_output.clone()
+    #         return grad_input
+    #         # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+    #         # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+    #         # grad_input = grad_output.clone()
+    #         # clamped_output = torch.clamp(torch.abs(grad_input), min=threshold_down, max=threshold_up)
+    #         # grad_input = torch.where(grad_input<0, -clamped_output, clamped_output)
+
+    #         # exponent_bits = torch.floor(torch.log2(torch.abs(grad_input))) + offset
+    #         # exponent = torch.pow(2, (exponent_bits - offset))
+    #         # mantissa_bits = torch.round(((grad_input / exponent) - 1) * scale)
+    #         # grad_input = ((mantissa_bits/scale) + 1) * exponent
+    #         # return grad_input
+
+    # def activation_hook(module, input, output):
+    #     output = STEFunction_structured.apply(output)
+    #     # for keeping track of activations
+    #     # list_output_activation[str(module.__class__.__name__)+str("_")+str(counter.get_count())] = output #$$$
+    #     # counter.increase() #$$$
+    #     return output
+
+    # EXCLUDED_ACTIVATIONS = (nn.ReLU, nn.Tanh, nn.GELU, nn.Sigmoid, nn.Softmax, nn.LeakyReLU, nn.PReLU)
+
+    # for name, module in model.named_modules():
+    #     if not isinstance(module, nn.ModuleList) and not list(module.children()) and "intermediate_act_fn" not in name and not isinstance(module, nn.LayerNorm) and not isinstance(module, nn.Dropout) and not any(isinstance(module, activation) for activation in EXCLUDED_ACTIVATIONS):
+    #         module.register_forward_hook(activation_hook)
+    # PH: end
+
+    # PH: start (LNS8)
+    # CONVERT TO LNS16/LNS8
     # DONT FORGET TO FIRST QUANTIZE WEIGHTS TO LNS16
     # IN YOUR HOOK, YOU HAVE TO USE .CLONE OF THE ARGUMNETS AND THEN MODIFY IT AND FINALLY RETURN IT. IT DOESNT WORK WITHOUT CLONE (IT HAS TO BE OUT OF PLACE COMPUTATION, NOT IN-PLACE)
+    #old version:
+    # num_bit_mantissa = 5 # for 16 bit repr.
+    # # num_bit_mantissa = 3 # for 8 bit repr.
+    # num_frac = 10 # fractional bits for 16 bit repr.
+    # # num_frac = 4 # fractional bits for 8 bit repr.
 
-    # Create a 32-bit float tensor 3 bit mantissa, 4 bit exponent
-    num_bit_exponent = 4
-    num_bit_mantissa  = 3
-    offset = torch.tensor(2**(num_bit_exponent-1))
-    scale = torch.tensor(2 ** num_bit_mantissa)
-    threshold_clamp = 2**num_bit_exponent
+    # new version:
+    # num_bit_mantissa = 5 # for 16 bit repr.
+    num_bit_mantissa = 4 # for 8 bit repr.
+    # num_frac = 10 # fractional bits for 16 bit repr.
+    num_frac = 3 # fractional bits for 8 bit repr.
+
+    scale = float(2**num_frac)
+    threshold_clamp = 2**(num_bit_mantissa)
     threshold_up = float(2**threshold_clamp)
     threshold_down = float(2**-(threshold_clamp))
-
-    # float32_tensor = torch.tensor(3.14159, dtype=torch.float32)
-
-    # # Extract sign, exponent, and mantissa bits from the 32-bit float
-    # # sign_bit = float32_tensor.sign()
-    # exponent_bits = torch.floor(torch.log2(torch.abs(float32_tensor))) + offset
-    # exponent = torch.pow(2, (exponent_bits - offset))
-    # mantissa_bits = torch.round(((float32_tensor / exponent) - 1) * scale)
-    # apx_float = ((mantissa_bits/scale) + 1) * exponent
 
     # For keeping track of activations:
     # class ReferenceCounter:
@@ -253,41 +342,61 @@ def train(config):
         @staticmethod
         def forward(ctx, input):
             # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
-            # output = input.clone()
-            if isinstance(input, tuple):
-                # Clone each tensor in the tuple
-                output = tuple(t.clone() for t in input)
-                output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
-                output = tuple(((torch.round(((t / torch.pow(2, (torch.floor(torch.log2(torch.abs(t)))))) - 1) * scale)/scale) + 1) * torch.pow(2, (torch.floor(torch.log2(torch.abs(t))))) for t in output)
-                return output                
-            else:
-                # If input is not a tuple, clone it
-                output = input.clone()
-                # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
-                clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
-                output = torch.where(output<0, -clamped_output, clamped_output)
+            output = input.clone()
+            # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+            clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
+            output = torch.where(output<0, -clamped_output, clamped_output)
+            # my_max = torch.max(copy_output).item()
+            # my_min = torch.min(copy_output).item()
+            # my_absmin = torch.min(torch.abs(copy_output)).item()
+            # if my_max > threshold_up or abs(my_min) > threshold_up:
+            #   print("Error: out of range for 16 bit quant BIG NUMBER")
+            # if my_absmin < threshold_down:
+            #   # print("Error: out of range for 16 bit quant SMALL NUMBER")
+            #   copy_output = torch.where(torch.abs(copy_output) < threshold_down, torch.tensor(0.0), copy_output)
 
-                exponent_bits = torch.floor(torch.log2(torch.abs(output))) + offset
-                exponent = torch.pow(2, (exponent_bits - offset))
-                mantissa_bits = torch.round(((output / exponent) - 1) * scale)
-                output = ((mantissa_bits/scale) + 1) * exponent
-                return output
+            # v1: concise
+            output = torch.where(output > 0, torch.pow(2,(torch.round(torch.log2(output)*scale))/scale), torch.where(output < 0, -torch.pow(2,(torch.round(torch.log2(-output)*scale)/scale)), output))
+            return output
+
+            # v2:
+            # if len(output.shape) == 3: # 3D
+            #   non_zero_indices = output.nonzero()
+            #   non_zero_values = output[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2]] # 0 because the first dimension is batch, 1 b/c next one is first dimension of feature, 2 b/c it is second dimension of features
+            #   # if 1D: non_zero_indices
+            #   if len(non_zero_values) > 0: # any nonzero avail
+            #     log_x = torch.where(non_zero_values > 0, torch.log2(non_zero_values), -torch.log2(-non_zero_values))
+            #     integer_part = torch.round(log_x * scale).to(torch.float32) # 2**3 - round(+ 0.5)
+            #     quant_exponent = integer_part / scale
+            #     # quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, quant_exponent)))
+            #     quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, -quant_exponent)))
+            #     output[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2]] = quantized_values
+            # elif len(output.shape) == 2: # 2D
+            #   non_zero_indices = output.nonzero()
+            #   non_zero_values = output[non_zero_indices[:, 0], non_zero_indices[:, 1]] # 0 because the first dimension is batch, 1 b/c next one is first dimension of feature, 2 b/c it is second dimension of features
+            #   if len(non_zero_values) > 0:
+            #     log_x = torch.where(non_zero_values > 0, torch.log2(non_zero_values), -torch.log2(-non_zero_values))
+            #     integer_part = torch.round(log_x * scale).to(torch.float32) # 2**3 - round(+ 0.5)
+            #     quant_exponent = integer_part / scale
+            #     # quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, quant_exponent)))
+            #     quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, -quant_exponent)))
+            #     output[non_zero_indices[:, 0], non_zero_indices[:, 1]] = quantized_values
+            # else:
+            #   print("Out of shape")
+            # return output
 
         @staticmethod
         def backward(ctx, grad_output):
-            # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+            # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
             grad_input = grad_output.clone()
             return grad_input
-            # # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
-            # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+            # uncomment the follwoing line to also quantize gradients during bakward prop.
             # grad_input = grad_output.clone()
+            # # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
             # clamped_output = torch.clamp(torch.abs(grad_input), min=threshold_down, max=threshold_up)
             # grad_input = torch.where(grad_input<0, -clamped_output, clamped_output)
-
-            # exponent_bits = torch.floor(torch.log2(torch.abs(grad_input))) + offset
-            # exponent = torch.pow(2, (exponent_bits - offset))
-            # mantissa_bits = torch.round(((grad_input / exponent) - 1) * scale)
-            # grad_input = ((mantissa_bits/scale) + 1) * exponent
+            # # v1: concise
+            # grad_input = torch.where(grad_input > 0, torch.pow(2,(torch.round(torch.log2(grad_input)*scale))/scale), torch.where(grad_input < 0, -torch.pow(2,(torch.round(torch.log2(-grad_input)*scale)/scale)), grad_input))
             # return grad_input
 
     def activation_hook(module, input, output):
@@ -302,7 +411,9 @@ def train(config):
     for name, module in model.named_modules():
         if not isinstance(module, nn.ModuleList) and not list(module.children()) and "intermediate_act_fn" not in name and not isinstance(module, nn.LayerNorm) and not isinstance(module, nn.Dropout) and not any(isinstance(module, activation) for activation in EXCLUDED_ACTIVATIONS):
             module.register_forward_hook(activation_hook)
+            # print(name)
     # PH: end
+
     logger.info("creating trainer")
     # trainer specific
     if config.logging_steps == -1:
