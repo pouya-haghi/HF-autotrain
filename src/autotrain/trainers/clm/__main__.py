@@ -223,7 +223,7 @@ def train(config):
     # num_bit_mantissa  = 3
     # offset = torch.tensor(2**(num_bit_exponent-1))
     # scale = torch.tensor(2 ** num_bit_mantissa)
-    # threshold_clamp = 2**num_bit_exponent
+    # threshold_clamp = 2**(num_bit_exponent-1)
     # threshold_up = float(2**threshold_clamp)
     # threshold_down = float(2**-(threshold_clamp))
 
@@ -304,26 +304,109 @@ def train(config):
     #         module.register_forward_hook(activation_hook)
     # PH: end
 
-    # PH: start (LNS8)
-    # CONVERT TO LNS16/LNS8
-    # DONT FORGET TO FIRST QUANTIZE WEIGHTS TO LNS16
-    # IN YOUR HOOK, YOU HAVE TO USE .CLONE OF THE ARGUMNETS AND THEN MODIFY IT AND FINALLY RETURN IT. IT DOESNT WORK WITHOUT CLONE (IT HAS TO BE OUT OF PLACE COMPUTATION, NOT IN-PLACE)
-    #old version:
+    # # PH: start (LNS8)
+    # # CONVERT TO LNS16/LNS8
+    # # DONT FORGET TO FIRST QUANTIZE WEIGHTS TO LNS16
+    # # IN YOUR HOOK, YOU HAVE TO USE .CLONE OF THE ARGUMNETS AND THEN MODIFY IT AND FINALLY RETURN IT. IT DOESNT WORK WITHOUT CLONE (IT HAS TO BE OUT OF PLACE COMPUTATION, NOT IN-PLACE)
+    # #old version:
+    # # num_bit_mantissa = 5 # for 16 bit repr.
+    # # # num_bit_mantissa = 3 # for 8 bit repr.
+    # # num_frac = 10 # fractional bits for 16 bit repr.
+    # # # num_frac = 4 # fractional bits for 8 bit repr.
+
+    # # new version:
+    # # num_bit_mantissa = 5 # for 16 bit repr.
+    # num_bit_mantissa = 4 # for 8 bit repr.
+    # # num_frac = 10 # fractional bits for 16 bit repr.
+    # num_frac = 3 # fractional bits for 8 bit repr.
+    # scale = float(2**num_frac)
+    # threshold_clamp = 2**(num_bit_mantissa-1)
+    # threshold_up = float(2**threshold_clamp)
+    # threshold_down = float(2**-(threshold_clamp))
+
+    # # For keeping track of activations:
+    # # class ReferenceCounter:
+    # #     def __init__(self):
+    # #         self.count = 0
+    # #     def increase(self):
+    # #         self.count += 1
+    # #     def get_count(self):
+    # #         return self.count
+
+    # # counter = ReferenceCounter()
+    # # list_output_activation = {}
+
+    # class STEFunction_structured(torch.autograd.Function):
+    #     """ define straight through estimator with overrided gradient (gate) """
+    #     @staticmethod
+    #     def forward(ctx, input):
+    #         # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
+    #         if isinstance(input, tuple):
+    #             # Clone each tensor in the tuple
+    #             output = tuple(t.clone() for t in input)
+    #             output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
+    #             output = tuple(torch.where(t > 0, torch.pow(2,(torch.round(torch.log2(t)*scale))/scale), torch.where(t < 0, -torch.pow(2,(torch.round(torch.log2(-t)*scale)/scale)), t)) for t in output)
+    #             return output                
+    #         else:
+    #             output = input.clone()
+    #             # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+    #             clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
+    #             output = torch.where(output<0, -clamped_output, clamped_output)
+    #             # v1: concise
+    #             output = torch.where(output > 0, torch.pow(2,(torch.round(torch.log2(output)*scale))/scale), torch.where(output < 0, -torch.pow(2,(torch.round(torch.log2(-output)*scale)/scale)), output))
+    #             return output
+
+    #     @staticmethod
+    #     def backward(ctx, grad_output):
+    #         # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
+    #         grad_input = grad_output.clone()
+    #         return grad_input
+    #         # uncomment the follwoing line to also quantize gradients during bakward prop.
+    #         # grad_input = grad_output.clone()
+    #         # # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
+    #         # clamped_output = torch.clamp(torch.abs(grad_input), min=threshold_down, max=threshold_up)
+    #         # grad_input = torch.where(grad_input<0, -clamped_output, clamped_output)
+    #         # # v1: concise
+    #         # grad_input = torch.where(grad_input > 0, torch.pow(2,(torch.round(torch.log2(grad_input)*scale))/scale), torch.where(grad_input < 0, -torch.pow(2,(torch.round(torch.log2(-grad_input)*scale)/scale)), grad_input))
+    #         # return grad_input
+
+    # def activation_hook(module, input, output):
+    #     output = STEFunction_structured.apply(output)
+    #     # for keeping track of activations
+    #     # list_output_activation[str(module.__class__.__name__)+str("_")+str(counter.get_count())] = output #$$$
+    #     # counter.increase() #$$$
+    #     return output
+
+    # EXCLUDED_ACTIVATIONS = (nn.ReLU, nn.Tanh, nn.GELU, nn.Sigmoid, nn.Softmax, nn.LeakyReLU, nn.PReLU)
+
+    # for name, module in model.named_modules():
+    #     if not isinstance(module, nn.ModuleList) and not list(module.children()) and "intermediate_act_fn" not in name and not isinstance(module, nn.LayerNorm) and not isinstance(module, nn.Dropout) and not any(isinstance(module, activation) for activation in EXCLUDED_ACTIVATIONS):
+    #         module.register_forward_hook(activation_hook)
+    #         # print(name)
+    # # PH: end
+
+    # PH: start (modified LNS8)
     # num_bit_mantissa = 5 # for 16 bit repr.
-    # # num_bit_mantissa = 3 # for 8 bit repr.
-    # num_frac = 10 # fractional bits for 16 bit repr.
-    # # num_frac = 4 # fractional bits for 8 bit repr.
+    num_bit_mantissa = 5 # for 8 bit repr.
+    threshold_mantissa = 2**(num_bit_mantissa-1)
+    threshold_up = float(2**threshold_mantissa)
+    threshold_down = float(2**-(threshold_mantissa))
 
     # new version:
-    # num_bit_mantissa = 5 # for 16 bit repr.
-    num_bit_mantissa = 4 # for 8 bit repr.
-    # num_frac = 10 # fractional bits for 16 bit repr.
-    num_frac = 3 # fractional bits for 8 bit repr.
+    max_num_bit_mantissa_needed = 1 # according to the distribution you can get this number
+    log_domain_threshold = 2** max_num_bit_mantissa_needed # 4
+    real_domain_threshold_up = float(2**log_domain_threshold) # 16
+    real_domain_threshold_down = float(2**(-log_domain_threshold)) # 1/16
 
-    scale = float(2**num_frac)
-    threshold_clamp = 2**(num_bit_mantissa)
-    threshold_up = float(2**threshold_clamp)
-    threshold_down = float(2**-(threshold_clamp))
+    # num_frac_low_prec = 10 # number of fractional bits for 16 bit repr.
+    num_frac_low_prec = 2 # number of fractional bits for 8 bit repr.
+    # num_frac_high_prec = num_frac_low_prec + (num_bit_mantissa-max_num_bit_mantissa_needed) # 13
+    num_frac_high_prec = num_frac_low_prec + 2 # 13
+    scale_low_prec = 2**(num_frac_low_prec)
+    scale_high_prec = 2**(num_frac_high_prec)
+    # v3:
+    num_frac_highest_prec = num_frac_high_prec + 2 # for extreme outliers
+    scale_highest_prec = 2**(num_frac_highest_prec)
 
     # For keeping track of activations:
     # class ReferenceCounter:
@@ -343,18 +426,48 @@ def train(config):
         def forward(ctx, input):
             # ctx.save_for_backward(input.clone()) # if you want to use input during backward calculation
             if isinstance(input, tuple):
-                # Clone each tensor in the tuple
                 output = tuple(t.clone() for t in input)
-                output = tuple(torch.where(t < 0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
-                output = tuple(torch.where(t > 0, torch.pow(2,(torch.round(torch.log2(t)*scale))/scale), torch.where(t < 0, -torch.pow(2,(torch.round(torch.log2(-t)*scale)/scale)), t)) for t in output)
-                return output                
+                output = tuple(torch.where(t<0, -torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up), torch.clamp(torch.abs(t), min=threshold_down, max=threshold_up)) for t in output)
+                output = tuple(torch.where(t > 0, torch.pow(2, torch.where(torch.log2(t)>torch.max(torch.log2(t))-5, torch.where(torch.log2(t)>torch.max(torch.log2(t))-3, torch.round(torch.log2(t) * scale_highest_prec)/ scale_highest_prec, torch.round(torch.log2(t) * scale_high_prec)/ scale_high_prec), torch.round(torch.log2(t) * scale_low_prec)/ scale_low_prec)), torch.where(t < 0, -torch.pow(2, torch.where(torch.log2(-t)>torch.max(torch.log2(-t))-5, torch.where(torch.log2(-t)>torch.max(torch.log2(-t))-3, torch.round(torch.log2(-t) * scale_highest_prec)/ scale_highest_prec, torch.round(torch.log2(-t) * scale_high_prec)/ scale_high_prec), torch.round(torch.log2(-t) * scale_low_prec)/ scale_low_prec)), t)) for t in output)
+                return output
             else:
                 output = input.clone()
                 # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
                 clamped_output = torch.clamp(torch.abs(output), min=threshold_down, max=threshold_up)
                 output = torch.where(output<0, -clamped_output, clamped_output)
-                # v1: concise
-                output = torch.where(output > 0, torch.pow(2,(torch.round(torch.log2(output)*scale))/scale), torch.where(output < 0, -torch.pow(2,(torch.round(torch.log2(-output)*scale)/scale)), output))
+
+                # v3:
+                if len(output.shape) == 3: # 3D
+                  non_zero_indices = output.nonzero()
+                  non_zero_values = output[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2]] # 0 because the first dimension is batch, 1 b/c next one is first dimension of feature, 2 b/c it is second dimension of features
+                  # if 1D: non_zero_indices
+                  if len(non_zero_values) > 0: # any nonzero avail
+                    log_x = torch.where(non_zero_values > 0, torch.log2(non_zero_values), torch.log2(-non_zero_values))
+                    quant_exponent_low_prec = torch.round(log_x * scale_low_prec)/ scale_low_prec # 2**3 - round(+ 0.5)
+                    quant_exponent_high_prec = torch.round(log_x * scale_high_prec)/ scale_high_prec # 2**3 - round(+ 0.5)
+                    # --------  v3 (including extreme outliers) ---------
+                    quant_exponent_highest_prec = torch.round(log_x * scale_highest_prec)/ scale_highest_prec # 2**3 - round(+ 0.5)
+                    max_val = torch.max(log_x)
+                    quant_exponent = torch.where(log_x>max_val-5, torch.where(log_x>max_val-3, quant_exponent_highest_prec, quant_exponent_high_prec), quant_exponent_low_prec) # max_val-3 and max_val-5 are thresholds for extreme and moderate outliers (beta nd gamma)
+                    # ------- end v3 ---------
+                    quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, quant_exponent)))
+                    output[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2]] = quantized_values
+                elif len(output.shape) == 2: # 2D
+                  non_zero_indices = output.nonzero()
+                  non_zero_values = output[non_zero_indices[:, 0], non_zero_indices[:, 1]] # 0 because the first dimension is batch, 1 b/c next one is first dimension of feature, 2 b/c it is second dimension of features
+                  if len(non_zero_values) > 0:
+                    log_x = torch.where(non_zero_values > 0, torch.log2(non_zero_values), torch.log2(-non_zero_values))
+                    quant_exponent_low_prec = torch.round(log_x * scale_low_prec) / scale_low_prec # 2**3 - round(+ 0.5)
+                    quant_exponent_high_prec = torch.round(log_x * scale_high_prec) / scale_high_prec # 2**3 - round(+ 0.5)
+                    # --------  v3 (including extreme outliers) ---------
+                    quant_exponent_highest_prec = torch.round(log_x * scale_highest_prec)/ scale_highest_prec # 2**3 - round(+ 0.5)
+                    max_val = torch.max(log_x)
+                    quant_exponent = torch.where(log_x>max_val-5, torch.where(log_x>max_val-3, quant_exponent_highest_prec, quant_exponent_high_prec), quant_exponent_low_prec) # max_val-3 and max_val-5 are thresholds for extreme and moderate outliers (beta nd gamma)
+                    # ------- end v3 ---------
+                    quantized_values = torch.where(non_zero_values > 0, torch.pow(2, quant_exponent), -(torch.pow(2, quant_exponent)))
+                    output[non_zero_indices[:, 0], non_zero_indices[:, 1]] = quantized_values
+                else:
+                  print("Out of shape")
                 return output
 
         @staticmethod
@@ -362,28 +475,17 @@ def train(config):
             # aux1 = ctx.saved_tensors # if you want to use input during backward calculation
             grad_input = grad_output.clone()
             return grad_input
-            # uncomment the follwoing line to also quantize gradients during bakward prop.
-            # grad_input = grad_output.clone()
-            # # handling overflow/underflow (b/c of limited # of bits for mantissa) -> sparsify if less than a threshold and report an error message if larger thana threshold
-            # clamped_output = torch.clamp(torch.abs(grad_input), min=threshold_down, max=threshold_up)
-            # grad_input = torch.where(grad_input<0, -clamped_output, clamped_output)
-            # # v1: concise
-            # grad_input = torch.where(grad_input > 0, torch.pow(2,(torch.round(torch.log2(grad_input)*scale))/scale), torch.where(grad_input < 0, -torch.pow(2,(torch.round(torch.log2(-grad_input)*scale)/scale)), grad_input))
-            # return grad_input
 
     def activation_hook(module, input, output):
         output = STEFunction_structured.apply(output)
-        # for keeping track of activations
-        # list_output_activation[str(module.__class__.__name__)+str("_")+str(counter.get_count())] = output #$$$
-        # counter.increase() #$$$
         return output
 
     EXCLUDED_ACTIVATIONS = (nn.ReLU, nn.Tanh, nn.GELU, nn.Sigmoid, nn.Softmax, nn.LeakyReLU, nn.PReLU)
 
-    for name, module in model.named_modules():
+    for name, module in self.model.named_modules():
         if not isinstance(module, nn.ModuleList) and not list(module.children()) and "intermediate_act_fn" not in name and not isinstance(module, nn.LayerNorm) and not isinstance(module, nn.Dropout) and not any(isinstance(module, activation) for activation in EXCLUDED_ACTIVATIONS):
             module.register_forward_hook(activation_hook)
-            # print(name)
+
     # PH: end
 
     logger.info("creating trainer")
